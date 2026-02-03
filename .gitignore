@@ -1,0 +1,22 @@
+# --- Environnements virtuels (votre demande) ---
+venv/
+.venv/
+env/
+.env/
+ENV/
+
+# --- Python cache et compilation ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Fichiers de distribution ---
+dist/
+build/
+*.egg-info/
+
+# --- IDE et Editeurs (optionnel mais recommandé) ---
+.idea/
+.vscode/
+*.swp
+.DS_Store

@@ -4,98 +4,101 @@ import csv
 import io
 import os
 
-def convert_excel_to_sqlite(excel_path, db_path, table_name='cards'):
+def convert_excel_to_sqlite(excel_path, db_path, table_name='quiz_card'):
     print(f"Reading {excel_path}...")
+    # On lit le fichier Excel sans header car la structure semble complexe
     df = pd.read_excel(excel_path, header=None)
 
+    # Suppression de l'ancienne DB pour repartir au propre
     if os.path.exists(db_path):
         os.remove(db_path)
 
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
+    # --- MODIFICATION IMPORTANTE ICI ---
+    # 1. id_card est maintenant TEXT
+    # 2. Ajout de NOT NULL partout pour satisfaire Room
     create_table_sql = f"""
     CREATE TABLE IF NOT EXISTS {table_name} (
-        id_card INTEGER PRIMARY KEY,
-        question TEXT,
-        answer TEXT,
-        fake_answer_one TEXT,
-        fake_answer_two TEXT,
-        theme TEXT,
-        submatter TEXT,
-        matter TEXT,
-        explanation TEXT
+        id_card TEXT NOT NULL PRIMARY KEY,
+        question TEXT NOT NULL,
+        answer TEXT NOT NULL,
+        fake_answer_one TEXT NOT NULL,
+        fake_answer_two TEXT NOT NULL,
+        theme TEXT NOT NULL,
+        submatter TEXT NOT NULL,
+        matter TEXT NOT NULL,
+        explanation TEXT NOT NULL
     );
     """
     cursor.execute(create_table_sql)
 
-    header_row = df.iloc[2, 0]
-    header = next(csv.reader(io.StringIO(header_row)))
+    # Récupération du header pour comparaison (ligne 3, colonne 1 selon ton script original)
+    try:
+        header_row = df.iloc[2, 0]
+        header = next(csv.reader(io.StringIO(str(header_row))))
+    except Exception as e:
+        print(f"Error reading header: {e}")
+        return
 
     seen_ids = set()
     rows_to_insert = []
 
+    print("Processing rows...")
     for idx, row in df.iterrows():
         cell_value = row[0]
         if pd.isna(cell_value):
             continue
 
         try:
+            # Parsing du contenu CSV dans la cellule Excel
             parsed = next(csv.reader(io.StringIO(str(cell_value))))
         except Exception as e:
             continue
 
+        # On saute la ligne si c'est le header
         if parsed == header:
             continue
-
-        # Relaxed parsing: if len > 9, try to take first 9? No, that was previous step.
-        # But we still have some anomalies that my structural fix script didn't catch
-        # (maybe because I ran it on a separate CSV export and re-imported?).
-        # Wait, I created `BDD_CRPE_RUSH_CORRIGE.xlsx` by writing `final_rows`.
-        # Ah, I see: "Skipping row 406 due to length 2".
-        # This means my structural fix script FAILED to fix row 406 properly or serialized it poorly?
-        # Row 406 in my dump was: ['203', 'Quelle est la somme...'] (Length 2?)
-
-        # Actually, let's just skip bad rows for the DB conversion or try to salvage?
-        # The user wants a clean DB.
-
+        
+        # Gestion des lignes mal formées (longueur incorrecte)
         if len(parsed) != 9:
-            # Try to fix "on the fly" if easy?
-            # If length is 10 and last part is part of explanation...
             if len(parsed) > 9:
-                # Merge explanation
+                # Si trop long, on fusionne le surplus dans l'explication
                 expl = ",".join(parsed[8:])
                 parsed = parsed[:8] + [expl]
             else:
-                print(f"Skipping row {idx} (Len {len(parsed)}): {parsed}")
+                # Si trop court, on ignore (ou on pourrait padder avec des vides)
+                # print(f"Skipping row {idx} (Len {len(parsed)})")
                 continue
 
+        # --- MODIFICATION DE L'ID ---
         try:
-            row_id = int(parsed[0])
+            # On nettoie l'ID : on le convertit en int d'abord pour enlever les ".0" éventuels, puis en string
+            # Ex: "1.0" -> 1 -> "1"
+            clean_id_int = int(float(parsed[0])) 
+            row_id = str(clean_id_int) 
         except:
+            # Si l'ID n'est pas un nombre valide, on saute
             continue
 
         if row_id in seen_ids:
-            # Duplicate ID found.
-            # print(f"Duplicate ID {row_id} at row {idx}. Generating new ID.")
-            # Strategy: Find max ID and increment? Or just skip?
-            # Or use autoincrement in DB and ignore provided ID?
-            # The ID might be important for the app.
-            # Let's Skip duplicates to avoid IntegrityError
             continue
 
         seen_ids.add(row_id)
 
+        # Création du tuple à insérer
+        # On force str() sur tout pour garantir le type TEXT
         data_tuple = (
             row_id,
-            parsed[1],
-            parsed[2],
-            parsed[3],
-            parsed[4],
-            parsed[5],
-            parsed[6],
-            parsed[7],
-            parsed[8]
+            str(parsed[1]),
+            str(parsed[2]),
+            str(parsed[3]),
+            str(parsed[4]),
+            str(parsed[5]),
+            str(parsed[6]),
+            str(parsed[7]),
+            str(parsed[8])
         )
         rows_to_insert.append(data_tuple)
 
@@ -113,4 +116,5 @@ def convert_excel_to_sqlite(excel_path, db_path, table_name='cards'):
     print(f"Database created at: {db_path}")
 
 if __name__ == "__main__":
-    convert_excel_to_sqlite('BDD CRPE RUSH 01.26.xlsx', 'crpe.db')
+    # Assure-toi que le nom du fichier Excel est correct
+    convert_excel_to_sqlite('BDD CRPE RUSH 01.26.xlsx', 'quiz.db')
